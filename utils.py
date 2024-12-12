@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 import random
@@ -6,11 +8,13 @@ import numpy as np
 import os
 from collections import Counter
 
-
+from torch.optim import AdamW, Adam, SGD
+from torch.optim.lr_scheduler import LambdaLR
 from torchvision.models import resnet18, resnet34, resnet50, resnet101, resnet152, inception_v3, mobilenet_v2, densenet121, \
     densenet161, densenet169, densenet201, alexnet, squeezenet1_0, shufflenet_v2_x1_0, wide_resnet50_2, wide_resnet101_2,\
     vgg11, mobilenet_v3_large, mobilenet_v3_small
 from torchvision.datasets import ImageFolder
+from torch.nn import functional as F
 import torchvision.transforms as transforms
 
 from torchvision.transforms import CenterCrop
@@ -219,3 +223,53 @@ def get_data(root, image_size, crop_size, batch_size, num_workers, pretrained):
                           'class_to_idx': trainset.class_to_idx}
 
     return trainloader, valloader, testloader, dataset_attributes
+
+
+# Label smoothing cross entropy
+class LabelSmoothingCrossEntropy(nn.Module):
+    """
+    Label smoothing: Modify the target labels during the training process to prevent the model from
+    becoming overconfident.
+    """
+    def __init__(self, smoothing_factor=0.1):
+        super(LabelSmoothingCrossEntropy, self).__init__()
+        self.smoothing_factor = smoothing_factor
+        self.confidence = 1 - smoothing_factor
+
+    def forward(self, logits, target):
+        """
+        https://huggingface.co/Qiyp/mimc_rope/resolve/5a8b7f96ebe575a5d294d50ff077dfdf27bcc91e/models_mage_codec_pos_linear.py?download=true
+        logits: The raw output scores from the model (e.g., a neural network).
+            This should be a tensor of shape (batch_size, num_classes).
+        target: The ground truth labels for the input data.
+            This should be a tensor of shape (batch_size).
+        Returns:
+            A scalar tensor representing the calculated loss.
+        """
+        # Calculate cross-entropy loss using nn.CrossEntropyLoss
+        criterion = nn.CrossEntropyLoss(reduction='none')  # Get loss per sample
+        ce_loss = criterion(logits, target)
+
+        # Calculate the smoothing loss
+        log_probs = nn.functional.log_softmax(logits, dim=-1)
+        smooth_loss = -log_probs.mean(dim=-1)
+
+        # Combine the losses
+        loss = self.confidence * ce_loss + self.smoothing * smooth_loss
+        return loss.mean()
+
+
+def configure_optimizer_and_scheduler(model, lr, weight_decay, warmup_steps, total_steps):
+    """
+    Configure the optimizer and learning rate scheduler with warmup and cosine annealing.
+    """
+    optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+
+    def lr_lambda(current_step):
+        if current_step < warmup_steps:
+            return float(current_step) / float(max(1, warmup_steps))
+        progress = float(current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
+        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
+
+    scheduler = LambdaLR(optimizer, lr_lambda)
+    return optimizer, scheduler
