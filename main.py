@@ -97,8 +97,8 @@ def train(args):
         pickle.dump(results, f)
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    add_all_parsers(parser)
-    args = parser.parse_args()
-    train(args)
+# if __name__ == '__main__':
+#     parser = argparse.ArgumentParser()
+#     add_all_parsers(parser)
+#     args = parser.parse_args()
+#     train(args)

@@ -273,3 +273,10 @@ def configure_optimizer_and_scheduler(model, lr, weight_decay, warmup_steps, tot
 
     scheduler = LambdaLR(optimizer, lr_lambda)
     return optimizer, scheduler
+
+
+def lr_lambda(current_step, warmup_steps, total_steps):
+    if current_step < warmup_steps:
+        return float(current_step) / float(max(1, warmup_steps))
+    progress = float(current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
+    return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
